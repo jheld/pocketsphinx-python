@@ -30,14 +30,14 @@ def inner_decoder(info):
         decoder.end_utt()
     return [seg.word for seg in decoder.seg()] if decoder else []
 
-def stream_decoder(stream, buff_size, offset, ending):
+def stream_decoder(stream, buff_size, offset, ending, cut_off_allow):
     stream_0 = wave.open(stream, 'rb')
     frame_rate = stream_0.getframerate()
     normative_offset = frame_rate * offset
-    if normative_offset:
+    if normative_offset and cut_off_allow:
         # go back 5 seconds, helps with potential clipping between partitions
-        if normative_offset - (5 * frame_rate):
-            normative_offset -= (5 * frame_rate)
+        if normative_offset - (cut_off_allow * frame_rate):
+            normative_offset -= (cut_off_allow * frame_rate)
     try:
         stream_0.setpos(normative_offset)
     except wave.Error:
@@ -48,8 +48,8 @@ def stream_decoder(stream, buff_size, offset, ending):
     decoder.start_utt()
     total_frames = stream_0.getnframes()
     normative_ending = ending * frame_rate
-    if normative_ending + (5 * frame_rate) < total_frames:
-        normative_ending += (5 * frame_rate)
+    if cut_off_allow and (normative_ending + (cut_off_allow * frame_rate) < total_frames):
+        normative_ending += (cut_off_allow * frame_rate)
     frames_to_read = (normative_ending - normative_offset) or int((ending - offset)*frame_rate)
     last_frame_index = frames_to_read + normative_offset
     frames_to_read = total_frames - stream_0.tell() if frames_to_read + stream_0.tell() > total_frames else frames_to_read
@@ -82,6 +82,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--concurrency', default=5, type=int, help='Number of concurrent workers to use.')
     arg_parser.add_argument('--concurrency-type', default='p', choices=['p', 'q'], help='type of concurrency the system will use (process, thread)')
     arg_parser.add_argument('--partition-size', default=10, type=int, help='define how long each partition should be, in seconds')
+    arg_parser.add_argument('--window-bleed', default=5, type=int, help='how much time we should bleed before or after partition size; may help reduce word cut offs.')
     args = arg_parser.parse_args()
     source_path = path.expanduser(args.filepath)
     results = []
@@ -96,7 +97,7 @@ if __name__ == '__main__':
     for offset in xrange(enumerations):
         offset_start = offset * args.partition_size
         offset_end = ((offset + 1)* args.partition_size) - 1
-        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, offset_end)))
+        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, offset_end, args.window_bleed)))
     print ('Best hypothesis segments: ', [result.get()[0] for result in results if result.get()])
     print([result.get()[1:] for result in results if result.get() and len(result.get()) > 1])
     print('Number of frames: {}, duration: {}'.format(total_frames, duration))
