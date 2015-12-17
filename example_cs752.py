@@ -34,6 +34,10 @@ def stream_decoder(stream, buff_size, offset, ending):
     stream_0 = wave.open(stream, 'rb')
     frame_rate = stream_0.getframerate()
     normative_offset = frame_rate * offset
+    if normative_offset:
+        # go back 5 seconds, helps with potential clipping between partitions
+        if normative_offset - (5 * frame_rate):
+            normative_offset -= (5 * frame_rate)
     try:
         stream_0.setpos(normative_offset)
     except wave.Error:
@@ -43,7 +47,10 @@ def stream_decoder(stream, buff_size, offset, ending):
     decoder = Decoder(config)
     decoder.start_utt()
     total_frames = stream_0.getnframes()
-    frames_to_read = int((ending - offset)*frame_rate)
+    normative_ending = ending * frame_rate
+    if normative_ending + (5 * frame_rate) < total_frames:
+        normative_ending += (5 * frame_rate)
+    frames_to_read = (normative_ending - normative_offset) or int((ending - offset)*frame_rate)
     last_frame_index = frames_to_read + normative_offset
     frames_to_read = total_frames - stream_0.tell() if frames_to_read + stream_0.tell() > total_frames else frames_to_read
     frames_to_read = frames_to_read if frames_to_read > buff_size else buff_size + 1
@@ -87,7 +94,9 @@ if __name__ == '__main__':
     import sys
     # sys.exit(1)
     for offset in xrange(enumerations):
-        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset*args.partition_size, (offset+1)*args.partition_size - 1)))
+        offset_start = offset * args.partition_size
+        offset_end = ((offset + 1)* args.partition_size) - 1
+        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, offset_end)))
     print ('Best hypothesis segments: ', [result.get()[0] for result in results if result.get()])
     print([result.get()[1:] for result in results if result.get() and len(result.get()) > 1])
     print('Number of frames: {}, duration: {}'.format(total_frames, duration))
