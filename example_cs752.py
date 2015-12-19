@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from os import environ, path
-from multiprocessing import Pool
+from multiprocessing import Pool, dummy
 import argparse
 import wave
 
@@ -80,13 +80,13 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('filepath', type=str, help='File path to audio file to process; can be relative or absolute')
     arg_parser.add_argument('--concurrency', default=5, type=int, help='Number of concurrent workers to use.')
-    arg_parser.add_argument('--concurrency-type', default='p', choices=['p', 'q'], help='type of concurrency the system will use (process, thread)')
+    arg_parser.add_argument('--concurrency-type', default='p', choices=['p', 't'], help='type of concurrency the system will use (process, thread)')
     arg_parser.add_argument('--partition-size', default=10, type=int, help='define how long each partition should be, in seconds')
     arg_parser.add_argument('--window-bleed', default=5, type=int, help='how much time we should bleed before or after partition size; may help reduce word cut offs.')
     args = arg_parser.parse_args()
     source_path = path.expanduser(args.filepath)
     results = []
-    main_pool = Pool(processes=args.concurrency)
+    main_pool = Pool(processes=args.concurrency) if args.concurrency_type == 'p' else dummy.Pool(processes=args.concurrency)
     handler = wave.open(source_path)
     total_frames = handler.getnframes()
     duration = total_frames / handler.getframerate()
