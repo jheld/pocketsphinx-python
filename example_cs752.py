@@ -30,9 +30,8 @@ def inner_decoder(info):
         decoder.end_utt()
     return [seg.word for seg in decoder.seg()] if decoder else []
 
-def stream_decoder(stream, buff_size, offset, ending, cut_off_allow):
+def stream_decoder(stream, buff_size, offset, ending, cut_off_allow, total_frames, frame_rate, is_last):
     stream_0 = wave.open(stream, 'rb')
-    frame_rate = stream_0.getframerate()
     normative_offset = frame_rate * offset
     if normative_offset and cut_off_allow:
         # go back 5 seconds, helps with potential clipping between partitions
@@ -46,7 +45,6 @@ def stream_decoder(stream, buff_size, offset, ending, cut_off_allow):
     inner_results = []
     decoder = Decoder(config)
     decoder.start_utt()
-    total_frames = stream_0.getnframes()
     normative_ending = ending * frame_rate
     if cut_off_allow and (normative_ending + (cut_off_allow * frame_rate) < total_frames):
         normative_ending += (cut_off_allow * frame_rate)
@@ -56,7 +54,7 @@ def stream_decoder(stream, buff_size, offset, ending, cut_off_allow):
     frames_to_read = frames_to_read if frames_to_read > buff_size else buff_size + 1
     cur_frame = normative_offset
     gone_in_yet = False
-    while (cur_frame + buff_size) <= last_frame_index or not gone_in_yet:
+    while ((cur_frame + buff_size) <= last_frame_index or not gone_in_yet) or is_last:
         # print(frames_to_read)
         gone_in_yet = True
         try:
@@ -97,7 +95,8 @@ if __name__ == '__main__':
     for offset in xrange(enumerations):
         offset_start = offset * args.partition_size
         offset_end = ((offset + 1)* args.partition_size) - 1
-        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, offset_end, args.window_bleed)))
+        is_last = (offset + 1) == enumerations
+        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, offset_end, args.window_bleed, total_frames, handler.getframerate(), is_last)))
     print ('Best hypothesis segments: ', [result.get()[0] for result in results if result.get()])
     print([result.get()[1:] for result in results if result.get() and len(result.get()) > 1])
     print('Number of frames: {}, duration: {}'.format(total_frames, duration))
