@@ -30,7 +30,7 @@ def inner_decoder(info):
         decoder.end_utt()
     return [seg.word for seg in decoder.seg()] if decoder else []
 
-def stream_decoder(stream, buff_size, offset, ending, cut_off_allow, total_frames, frame_rate, is_last):
+def stream_decoder(stream, buff_size, offset, ending_offset, cut_off_allow, total_frames, frame_rate, is_last):
     stream_0 = wave.open(stream, 'rb')
     normative_offset = frame_rate * offset
     if normative_offset and cut_off_allow:
@@ -45,10 +45,10 @@ def stream_decoder(stream, buff_size, offset, ending, cut_off_allow, total_frame
     inner_results = []
     decoder = Decoder(config)
     decoder.start_utt()
-    normative_ending = ending * frame_rate
-    if cut_off_allow and (normative_ending + (cut_off_allow * frame_rate) < total_frames):
-        normative_ending += (cut_off_allow * frame_rate)
-    frames_to_read = (normative_ending - normative_offset) or int((ending - offset)*frame_rate)
+    normative_ending_offset = (offset + ending_offset) * frame_rate
+    if cut_off_allow and (normative_ending_offset + (cut_off_allow * frame_rate) < total_frames):
+        normative_ending_offset += (cut_off_allow * frame_rate)
+    frames_to_read = (normative_ending_offset - normative_offset) or int((ending_offset - offset)*frame_rate)
     last_frame_index = frames_to_read + normative_offset
     frames_to_read = total_frames - stream_0.tell() if frames_to_read + stream_0.tell() > total_frames else frames_to_read
     frames_to_read = frames_to_read if frames_to_read > buff_size else buff_size + 1
@@ -66,7 +66,7 @@ def stream_decoder(stream, buff_size, offset, ending, cut_off_allow, total_frame
                 break
         except Exception as e:
             import traceback
-            print(frames_to_read, stream_0.tell(), total_frames)
+            print(normative_ending_offset - normative_offset, stream_0.tell(), total_frames)
             print(traceback.format_exc(e))
     # stream_pool.close()
     # stream_pool.join()
@@ -96,7 +96,7 @@ if __name__ == '__main__':
         offset_start = offset * args.partition_size
         offset_end = ((offset + 1)* args.partition_size) - 1
         is_last = (offset + 1) == enumerations
-        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, offset_end, args.window_bleed, total_frames, handler.getframerate(), is_last)))
+        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, args.partition_size, args.window_bleed, total_frames, handler.getframerate(), is_last)))
     print ('Best hypothesis segments: ', [result.get()[0] for result in results if result.get()])
     print([result.get()[1:] for result in results if result.get() and len(result.get()) > 1])
     print('Number of frames: {}, duration: {}'.format(total_frames, duration))
