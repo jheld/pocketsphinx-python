@@ -3,6 +3,7 @@ from os import environ, path
 from multiprocessing import Pool, dummy
 import argparse
 import wave
+import subprocess
 
 from pocketsphinx.pocketsphinx import *
 from sphinxbase.sphinxbase import *
@@ -81,8 +82,17 @@ if __name__ == '__main__':
     arg_parser.add_argument('--concurrency-type', default='p', choices=['p', 't'], help='type of concurrency the system will use (process, thread)')
     arg_parser.add_argument('--partition-size', default=10, type=int, help='define how long each partition should be, in seconds')
     arg_parser.add_argument('--window-bleed', default=5, type=int, help='how much time we should bleed before or after partition size; may help reduce word cut offs.')
+    arg_parser.add_argument('--convert-file', default=True, type=bool, help='does the input file need to be converted for usage? To appropriate wav type. Will create a converted file with UNIX time in the name, too.')
     args = arg_parser.parse_args()
     source_path = path.expanduser(args.filepath)
+    import time
+    wav_source = source_path + '.' + str(int(time.time())) + '.wav'
+    if args.convert_file:
+        print(source_path)
+        print(wav_source)
+        subprocess.call(['ffmpeg', '-i', source_path, '-acodec','pcm_s16le','-ac','1','-ar','16000',wav_source])
+    else:
+        wav_source = source_path
     results = []
     main_pool = Pool(processes=args.concurrency) if args.concurrency_type == 'p' else dummy.Pool(processes=args.concurrency)
     handler = wave.open(source_path)
@@ -96,7 +106,7 @@ if __name__ == '__main__':
         offset_start = offset * args.partition_size
         offset_end = ((offset + 1)* args.partition_size) - 1
         is_last = (offset + 1) == enumerations
-        results.append(main_pool.apply_async(stream_decoder, (source_path, 1024, offset_start, args.partition_size, args.window_bleed, total_frames, handler.getframerate(), is_last)))
+        results.append(main_pool.apply_async(stream_decoder, (wav_source, 1024, offset_start, args.partition_size, args.window_bleed, total_frames, handler.getframerate(), is_last)))
     print ('Best hypothesis segments: ', [result.get()[0] for result in results if result.get()])
     print([result.get()[1:] for result in results if result.get() and len(result.get()) > 1])
     print('Number of frames: {}, duration: {}'.format(total_frames, duration))
